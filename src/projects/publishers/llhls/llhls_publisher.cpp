@@ -390,8 +390,8 @@ std::shared_ptr<LLHlsHttpInterceptor> LLHlsPublisher::CreateInterceptor()
 			}
 		}
 
-		// TODO(Getroot): Improve this so that the player's first request is played immediately. This policy was temporarily changed due to a performance issue at the edge.
-		if (stream->WaitUntilStart(0) == false)
+		// [Jane] reverse to wait until start.
+		if (stream->WaitUntilStart(10000) == false)
 		{
 			logtw("(%s/%s) stream has created but not started yet", vhost_app_name.CStr(), stream_name.CStr());
 			response->SetStatusCode(http::StatusCode::Created);
