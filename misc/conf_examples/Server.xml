@@ -238,7 +238,7 @@
 
 				<Enables>
 					<Providers>rtmp,webrtc,srt</Providers>
-					<Publishers>webrtc,hls,llhls,dash,lldash</Publishers>
+					<Publishers>webrtc,llhls</Publishers>
 				</Enables>
 			</SignedPolicy>
 			-->
@@ -250,7 +250,7 @@
 				<Timeout>3000</Timeout>
 				<Enables>
 					<Providers>rtmp,webrtc,srt</Providers>
-					<Publishers>webrtc,hls,llhls,dash,lldash</Publishers>
+					<Publishers>webrtc,llhls</Publishers>
 				</Enables>
 			</AdmissionWebhooks>
 			-->
@@ -546,6 +546,26 @@
 								<Url>*</Url>
 							</CrossDomains>
 						</LLHLS>
+						<!--
+						<Push>
+							<StreamMap>
+								<Enable>false</Enable>
+								<Path>path/to/file.xml</Path>
+							</StreamMap>
+						</Push>
+						<FILE>
+							<RootPath>/prefix/path/to</RootPath>
+							<StreamMap>
+								<Enable>false</Enable>
+								<Path>path/to/file.xml</Path>
+							</StreamMap>
+						</FILE>
+						<Thumbnail>
+							<CrossDomains>
+								<Url>*</Url>
+							</CrossDomains>
+						</Thumbnail>						
+						-->
 					</Publishers>
 				</Application>
 			</Applications>

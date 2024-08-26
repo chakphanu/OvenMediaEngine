@@ -50,9 +50,6 @@ public:
 	void SendOutgoingData(const std::any &packet) override;
 	void OnMessageReceived(const std::any &message) override;
 
-	void OnPlayerConnected();
-	uint32_t GetPlayerCount() const;
-
 	void UpdateLastRequest(uint32_t connection_id);
 	uint64_t GetLastRequestTime(uint32_t connection_id) const;
 	void OnConnectionDisconnected(uint32_t connection_id);

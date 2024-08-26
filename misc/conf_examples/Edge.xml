@@ -122,7 +122,7 @@
 
 				<Enables>
 					<Providers>rtmp,webrtc,srt</Providers>
-					<Publishers>webrtc,hls,llhls,dash,lldash</Publishers>
+					<Publishers>webrtc,llhls</Publishers>
 				</Enables>
 			</SignedPolicy>
 			-->
@@ -134,7 +134,7 @@
 					<UnusedStreamDeletionTimeout>60000</UnusedStreamDeletionTimeout>
 				</Properties>
 				<!--
-					<Origin>
+				<Origin>
 					<Location>/app/stream</Location>
 					<Pass>
 						<Scheme>ovt</Scheme>

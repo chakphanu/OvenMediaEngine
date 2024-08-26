@@ -19,7 +19,7 @@ TranscoderStreamInternal::~TranscoderStreamInternal()
 {
 }
 
-ov::String TranscoderStreamInternal::GetIdentifiedForVideoProfile(const uint32_t track_id, const cfg::vhost::app::oprf::VideoProfile &profile)
+ov::String TranscoderStreamInternal::ProfileToSerialize(const uint32_t track_id, const cfg::vhost::app::oprf::VideoProfile &profile)
 {
 	if (profile.IsBypass() == true)
 	{
@@ -48,7 +48,7 @@ ov::String TranscoderStreamInternal::GetIdentifiedForVideoProfile(const uint32_t
 	return unique_profile_name;
 }
 
-ov::String TranscoderStreamInternal::GetIdentifiedForImageProfile(const uint32_t track_id, const cfg::vhost::app::oprf::ImageProfile &profile)
+ov::String TranscoderStreamInternal::ProfileToSerialize(const uint32_t track_id, const cfg::vhost::app::oprf::ImageProfile &profile)
 {
 	return ov::String::FormatString("I=%d,O=%s:%.02f:%d:%d:%d",
 									track_id,
@@ -59,7 +59,7 @@ ov::String TranscoderStreamInternal::GetIdentifiedForImageProfile(const uint32_t
 									profile.GetHeight());
 }
 
-ov::String TranscoderStreamInternal::GetIdentifiedForAudioProfile(const uint32_t track_id, const cfg::vhost::app::oprf::AudioProfile &profile)
+ov::String TranscoderStreamInternal::ProfileToSerialize(const uint32_t track_id, const cfg::vhost::app::oprf::AudioProfile &profile)
 {
 	if (profile.IsBypass() == true)
 	{
@@ -74,7 +74,7 @@ ov::String TranscoderStreamInternal::GetIdentifiedForAudioProfile(const uint32_t
 									profile.GetChannel());
 }
 
-ov::String TranscoderStreamInternal::GetIdentifiedForDataProfile(const uint32_t track_id)
+ov::String TranscoderStreamInternal::ProfileToSerialize(const uint32_t track_id)
 {
 	return ov::String::FormatString("I=%d,O=bypass", track_id);
 }
@@ -593,27 +593,55 @@ bool TranscoderStreamInternal::IsMatchesBypassCondition(const std::shared_ptr<Me
 	return (if_count > 0) ? true : false;
 }
 
-double TranscoderStreamInternal::GetEstimateFrameRate(const std::shared_ptr<MediaTrack> &input_track, MediaFrame *buffer)
+double TranscoderStreamInternal::GetProperFramerate(const std::shared_ptr<MediaTrack> &ref_track)
 {
-	double estimated_framerate = 0.0f;
+	double default_framerate = 30.0f;
 
-	if (input_track->GetFrameRate() != 0.0f)
+	if (ref_track->GetFrameRateByConfig() > 0.0f)
 	{
-		estimated_framerate = input_track->GetFrameRate();
-		logti("Framerate of the output stream is not set. set the estimated framerate from framerate of input track. %.2ffps", estimated_framerate);
+		double defined_framerate = ref_track->GetFrameRateByConfig();
+		logti("Output framerate is not set. set the estimated framerate from framerate of input track. %.2ffps",
+			  defined_framerate);
+		
+		return defined_framerate;
 	}
-	else if (input_track->GetEstimateFrameRate() != 0.0f)
+	else if (ref_track->GetFrameRateByMeasured() > 0.0f)
 	{
-		estimated_framerate = input_track->GetEstimateFrameRate();
-		logti("Framerate of the output stream is not set. set the estimated framerate from estimated framerate of input track. %.2ffps", estimated_framerate);
-	}
-	else
-	{
-		estimated_framerate = 1.0f / ((double)buffer->GetDuration() * input_track->GetTimeBase().GetExpr());
-		logti("Framerate of the output stream is not set. set the estimated framerate from decoded frame duration. %.2ffps", estimated_framerate);
+		double measured_framerate = ref_track->GetFrameRateByMeasured();
+		double recommended_framerate = MeasurementToRecommendFramerate(measured_framerate);
+
+		logti("Output framerate is not set. set the recommended framerate from measured framerate of input track. %.2f -> %.2f",
+			  measured_framerate, recommended_framerate);
+
+		return recommended_framerate;
 	}
 
-	return estimated_framerate;
+	logti("Output framerate is not set. set the default framerate. %.2ffps", default_framerate);
+
+	return default_framerate;
+}
+
+double TranscoderStreamInternal::MeasurementToRecommendFramerate(double framerate)
+{
+	double start_framerate = ::ceil(framerate);
+	if(start_framerate < 5.0f)
+		start_framerate = 5.0f;
+	
+	// It is greater than the measured frame rate and is set to a value that is divisible by an integer in the timebase(90Hz).
+	// In chunk-based protocols, the chunk length is made stable.
+	double recommend_framerate = start_framerate;
+
+	while (true)
+	{
+		if ((int)(90000 % (int64_t)recommend_framerate) == 0)
+		{
+			break;
+		}
+
+		recommend_framerate++;
+	}
+
+	return ::floor(recommend_framerate);
 }
 
 void TranscoderStreamInternal::UpdateOutputTrackPassthrough(const std::shared_ptr<MediaTrack> &output_track, MediaFrame *buffer)
@@ -662,8 +690,8 @@ void TranscoderStreamInternal::UpdateOutputTrackTranscode(const std::shared_ptr<
 		// Set framerate of the output track
 		if (output_track->GetFrameRate() == 0.0f)
 		{
-			auto estimated_framerate = GetEstimateFrameRate(input_track, buffer);
-			output_track->SetEstimateFrameRate(estimated_framerate);
+			auto framerate = GetProperFramerate(input_track);
+			output_track->SetEstimateFrameRate(framerate);
 		}
 
 		// To be compatible with all hardware. The encoding resolution must be a multiple of 4
@@ -699,4 +727,47 @@ void TranscoderStreamInternal::UpdateOutputTrackTranscode(const std::shared_ptr<
 			output_track->SetChannel(buffer->GetChannels());
 		}
 	}
+}
+
+bool TranscoderStreamInternal::StoreInputTrackSnapshot(std::shared_ptr<info::Stream> stream)
+{
+	_input_track_snapshot.clear();
+	
+	for (auto &[track_id, track] : stream->GetTracks())
+	{
+		auto clone = track->Clone();
+		_input_track_snapshot[track_id] = clone;
+	}	
+
+	return true;
+}
+
+std::map<int32_t, std::shared_ptr<MediaTrack>>& TranscoderStreamInternal::GetInputTrackSnapshot()
+{
+	return _input_track_snapshot;
+}
+
+bool TranscoderStreamInternal::IsEqualCountAndMediaTypeOfMediaTracks(std::map<int32_t, std::shared_ptr<MediaTrack>> a, std::map<int32_t, std::shared_ptr<MediaTrack>> b)
+{
+	if (a.size() != b.size())
+	{
+		return false;
+	}
+
+	for (auto &[track_id, track] : a)
+	{
+		if (b.find(track_id) == b.end())
+		{
+			return false;
+		}
+
+		auto track_b = b[track_id];
+
+		if(track->GetMediaType() != track_b->GetMediaType())
+		{
+			return false;
+		}
+	}
+
+	return true;
 }

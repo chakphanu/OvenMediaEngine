@@ -36,7 +36,11 @@
 
 std::shared_ptr<std::vector<std::shared_ptr<CodecCandidate>>> TranscodeEncoder::GetCandidates(bool hwaccels_enable, ov::String hwaccles_modules, std::shared_ptr<MediaTrack> track)
 {
-	logtd("Codec(%s), HWAccels.Enable(%s), HWAccels.Modules(%s), Video.Modules(%s), ", GetCodecIdToString(track->GetCodecId()).CStr(), hwaccels_enable?"true":"false", hwaccles_modules.CStr(), track->GetCodecModules().CStr());
+	logtd("Codec(%s), HWAccels.Enable(%s), HWAccels.Modules(%s), Video.Modules(%s)",
+		  GetCodecIdToString(track->GetCodecId()).CStr(),
+		  hwaccels_enable ? "true" : "false",
+		  hwaccles_modules.CStr(),
+		  track->GetCodecModules().CStr());
 
 	ov::String configuration = ""; 
 	std::shared_ptr<std::vector<std::shared_ptr<CodecCandidate>>> candidate_modules = std::make_shared<std::vector<std::shared_ptr<CodecCandidate>>>();
@@ -305,7 +309,7 @@ TranscodeEncoder::~TranscodeEncoder()
 		}
 	}
 
-	if(_codec_context != nullptr)
+	if (_codec_context != nullptr)
 	{
 		OV_SAFE_FUNC(_codec_context, nullptr, ::avcodec_free_context, &);
 	}
@@ -335,18 +339,16 @@ bool TranscodeEncoder::Configure(std::shared_ptr<MediaTrack> output_track)
 
 	auto name = ov::String::FormatString("encoder_%s_%d", ::avcodec_get_name(GetCodecID()), _track->GetId());
 	auto urn = std::make_shared<info::ManagedQueue::URN>(
-		_stream_info.GetApplicationInfo().GetName(),
+		_stream_info.GetApplicationInfo().GetVHostAppName(),
 		_stream_info.GetName(),
 		"trs",
 		name);
 	_input_buffer.SetUrn(urn);
 	_input_buffer.SetThreshold(MAX_QUEUE_SIZE);
 
-	// Limit the queue so that it does not exceed the threshold.
-	// If the encoder performance is poor. I expect the frame to be dropped from the scaler.
-	// The 'SetSkipMessageEnable' function was painstakingly created, but unfortunately it is not used here.
-	_input_buffer.SetPreventExceedThreshold(true);
-
+	// This is used to prevent the from creating frames from rescaler/resampler filter. 
+	// Because of hardware resource limitations.
+	_input_buffer.SetExceedWaitEnable(true);
 
 	// SkipMessage is enabled due to the high possibility of queue overflow due to insufficient video encoding performance.
 	// Users will not experience any inconvenience even if the video is intermittently missing.
@@ -366,7 +368,14 @@ std::shared_ptr<MediaTrack> &TranscodeEncoder::GetRefTrack()
 
 void TranscodeEncoder::SendBuffer(std::shared_ptr<const MediaFrame> frame)
 {
-	_input_buffer.Enqueue(std::move(frame));
+	if (_input_buffer.IsExceedWaitEnable() == true)
+	{
+		_input_buffer.Enqueue(std::move(frame), false, 1000);
+	}
+	else
+	{
+		_input_buffer.Enqueue(std::move(frame));
+	}
 }
 
 void TranscodeEncoder::SetCompleteHandler(CompleteHandler complete_handler)
@@ -397,6 +406,17 @@ void TranscodeEncoder::Stop()
 
 void TranscodeEncoder::CodecThread()
 {
+	if ((GetRefTrack()->GetMediaType() == cmn::MediaType::Video) &&
+		(GetRefTrack()->GetKeyFrameIntervalTypeByConfig() == cmn::KeyFrameIntervalType::TIME))
+	{
+		auto timebase_timescale = GetRefTrack()->GetTimeBase().GetTimescale();
+		auto key_frame_interval = GetRefTrack()->GetKeyFrameInterval();
+		_force_keyframe_by_time_interval = static_cast<int64_t>(timebase_timescale * (double)key_frame_interval / 1000);
+
+		// Insert keyframe in first frame
+		_accumulate_frame_duration = -1;
+	}
+
 	while (!_kill_flag)
 	{
 		auto obj = _input_buffer.Dequeue();
@@ -415,14 +435,19 @@ void TranscodeEncoder::CodecThread()
 			break;
 		}
 
-		// If force_keyframe_timer is started, keyframes are inserted based on time.
+		// Force inserts keyframes based on accumulated frame duration.
 		if (GetRefTrack()->GetMediaType() == cmn::MediaType::Video)
 		{
-			if (_force_keyframe_timer.IsStart() == true &&
-				_force_keyframe_timer.IsTimeout() == true &&
-				_force_keyframe_timer.Update())
+			av_frame->pict_type = AV_PICTURE_TYPE_NONE;
+			if (_force_keyframe_by_time_interval > 0)
 			{
-				av_frame->pict_type = AV_PICTURE_TYPE_I;
+				if (_accumulate_frame_duration >= _force_keyframe_by_time_interval ||
+					_accumulate_frame_duration == -1) // First Frame
+				{
+					av_frame->pict_type = AV_PICTURE_TYPE_I;
+					_accumulate_frame_duration = 0;
+				}
+				_accumulate_frame_duration += media_frame->GetDuration();
 			}
 		}
 

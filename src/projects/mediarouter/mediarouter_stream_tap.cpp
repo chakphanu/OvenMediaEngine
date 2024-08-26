@@ -41,6 +41,16 @@ MediaRouterStreamTap::State MediaRouterStreamTap::GetState() const
     return _state;
 }
 
+void MediaRouterStreamTap::SetNeedPastData(bool need_past_data)
+{
+	_need_past_data = need_past_data;
+}
+
+bool MediaRouterStreamTap::DoesNeedPastData() const
+{
+	return _need_past_data;
+}
+
 void MediaRouterStreamTap::Start()
 {
     _is_started = true;
@@ -94,6 +104,12 @@ bool MediaRouterStreamTap::Push(const std::shared_ptr<MediaPacket> &media_packet
     {
         return false;
     }
+
+	if (media_packet->GetBitstreamFormat() == cmn::BitstreamFormat::OVEN_EVENT)
+	{
+		// Event packet doen't need to forward to tap
+		return true;
+	}
 
     _buffer.Enqueue(media_packet->ClonePacket());
 

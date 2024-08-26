@@ -102,7 +102,7 @@ namespace pvd
 		return GetApplication()->GetApplicationTypeName();
 	}
 
-	bool Stream::SendDataFrame(int64_t timestamp, const cmn::BitstreamFormat &format, const cmn::PacketType &packet_type, const std::shared_ptr<ov::Data> &frame)
+	bool Stream::SendDataFrame(int64_t timestamp, const cmn::BitstreamFormat &format, const cmn::PacketType &packet_type, const std::shared_ptr<ov::Data> &frame, bool urgent)
 	{
 		if (frame == nullptr)
 		{
@@ -124,8 +124,29 @@ namespace pvd
 															timestamp,
 															format,
 															packet_type);
+		event_message->SetHighPriority(urgent);
 
 		return SendFrame(event_message);
+	}
+
+	bool Stream::SendEvent(const std::shared_ptr<MediaEvent> &event)
+	{
+		if (event == nullptr)
+		{
+			return false;
+		}
+
+		auto data_track = GetFirstTrackByType(cmn::MediaType::Data);
+		if (data_track == nullptr)
+		{
+			logte("Data track is not found. %s/%s(%u)", GetApplicationName(), GetName().CStr(), GetId());
+			return false;
+		}
+
+		event->SetMsid(GetMsid());
+		event->SetTrackId(data_track->GetId());
+
+		return SendFrame(event);
 	}
 
 	std::shared_ptr<ov::Url> Stream::GetRequestedUrl() const
@@ -354,7 +375,7 @@ namespace pvd
 			}
 
 			// for debugging
-			logtd("[%s/%s(%d)] Get start timestamp of stream. track:%d, ts:%lld (%d/%d) (%lldus)", _application->GetName().CStr(), GetName().CStr(), GetId(), track_id, dts, track->GetTimeBase().GetNum(), track->GetTimeBase().GetDen(), _start_timestamp);
+			logtd("[%s/%s(%d)] Get start timestamp of stream. track:%d, ts:%lld (%d/%d) (%lldus)", _application->GetVHostAppName().CStr(), GetName().CStr(), GetId(), track_id, dts, track->GetTimeBase().GetNum(), track->GetTimeBase().GetDen(), _start_timestamp);
 		}
 		int64_t start_timestamp_tb = (int64_t)((double)_start_timestamp * expr_us2tb);
 

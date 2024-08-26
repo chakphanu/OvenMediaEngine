@@ -381,7 +381,7 @@ bool LLHlsSession::ParseFileName(const ov::String &file_name, RequestType &type,
 		track_id = ov::Converter::ToInt32(name_items[1].CStr());
 		stream_key = name_items[3];
 	}
-	else if (name_items[0] == "seg" || name_ext_items[1] != "m4s")
+	else if (name_items[0] == "seg" && name_ext_items[1] == "m4s")
 	{
 		// seg_<track id>_<segment number>_<media type>_<stream key>_llhls
 		if (name_items.size() < 6)
@@ -395,7 +395,7 @@ bool LLHlsSession::ParseFileName(const ov::String &file_name, RequestType &type,
 		segment_number = ov::Converter::ToInt64(name_items[2].CStr());
 		stream_key = name_items[4];
 	}
-	else if (name_items[0] == "part" || name_ext_items[1] != "m4s")
+	else if (name_items[0] == "part" && name_ext_items[1] == "m4s")
 	{
 		// part_<track id>_<segment number>_<partial number>_<media type>_<stream key>_llhls
 		if (name_items.size() < 7)
@@ -485,7 +485,7 @@ void LLHlsSession::ResponsePlaylist(const std::shared_ptr<http::svr::HttpExchang
 	{
 		if (holdIfAccepted == false)
 		{
-			logtw("%s/%s/%s Failed to respond to pending request.", GetApplication()->GetName().CStr(), GetStream()->GetName().CStr(), file_name.CStr());
+			logtw("%s/%s/%s Failed to respond to pending request.", GetApplication()->GetVHostAppName().CStr(), GetStream()->GetName().CStr(), file_name.CStr());
 		}
 
 		// Send error response
@@ -593,7 +593,7 @@ void LLHlsSession::ResponseChunklist(const std::shared_ptr<http::svr::HttpExchan
 	{
 		if (holdIfAccepted == false)
 		{
-			logtw("%s/%s/%s Failed to respond to pending request.", GetApplication()->GetName().CStr(), GetStream()->GetName().CStr(), file_name.CStr());
+			logtw("%s/%s/%s Failed to respond to pending request.", GetApplication()->GetVHostAppName().CStr(), GetStream()->GetName().CStr(), file_name.CStr());
 		}
 
 		// Send error response
@@ -758,7 +758,7 @@ void LLHlsSession::ResponsePartialSegment(const std::shared_ptr<http::svr::HttpE
 	{
 		if (holdIfAccepted == false)
 		{
-			logtw("%s/%s/%s Failed to respond to pending request.", GetApplication()->GetName().CStr(), GetStream()->GetName().CStr(), file_name.CStr());
+			logtw("%s/%s/%s Failed to respond to pending request.", GetApplication()->GetVHostAppName().CStr(), GetStream()->GetName().CStr(), file_name.CStr());
 		}
 
 		// Send error response
@@ -855,7 +855,7 @@ bool LLHlsSession::AddPendingRequest(const std::shared_ptr<http::svr::HttpExchan
 	if (_pending_requests.size() > MAX_PENDING_REQUESTS)
 	{
 		logtd("[%s/%s/%u] Too many pending requests (%u)", 
-				GetApplication()->GetName().CStr(),
+				GetApplication()->GetVHostAppName().CStr(),
 				GetStream()->GetName().CStr(),
 				GetId(),
 				_pending_requests.size());
