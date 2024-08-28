@@ -60,7 +60,7 @@ bool OriginMapClient::Register(const ov::String &app_stream_name, const ov::Stri
 	// Set origin host to redis
 	// The EXPIRE option is to prevent locking the app/stream when OvenMediaEngine unexpectedly stops.
 	// So _update_timer updates the expire time once every 2.5 seconds.
-	redisReply *reply = (redisReply *)redisCommand(_redis_context, "SET %s %s EX 10 NX", app_stream_name.CStr(), origin_host.CStr());
+	redisReply *reply = (redisReply *)redisCommand(_redis_context, "SET %s %s EX 10", app_stream_name.CStr(), origin_host.CStr());
 	if (reply == nullptr || reply->type == REDIS_REPLY_ERROR)
 	{
 		logte("Failed to set origin host to redis : %s:%d (err:%s)", _redis_ip.CStr(), _redis_port, reply!=nullptr?reply->str:"nil");
