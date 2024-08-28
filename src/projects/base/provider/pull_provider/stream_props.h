@@ -41,7 +41,7 @@ namespace pvd
 
 		bool IsRelay() 
 		{
-			return _relay;
+			return false;  // force edge to transcode
 		}
 
 		bool IsFromOriginMapStore() 
